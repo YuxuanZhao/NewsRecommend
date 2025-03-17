@@ -62,3 +62,11 @@ def data_offline(df_train_click, df_test_click):
 df_train_click = pd.read_csv('drive/MyDrive/tcdata/train_click_log.csv')
 df_test_click = pd.read_csv('drive/MyDrive/tcdata/testA_click_log.csv')
 data_offline(df_train_click, df_test_click)
+
+def csvInfo():
+    df = pd.read_csv('movies_sm/ratings.csv')
+    df.info()
+    print('# userId:',  df.userId.nunique())
+    print('# movieId:', df.movieId.nunique())
+    print('rating distribution:', df.rating.value_counts())
+    print('shape:', df.shape)
