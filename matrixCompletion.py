@@ -13,7 +13,7 @@ embedding_size = 128
 batch_size = 1024
 num_epochs = 1
 test_steps = 1000
-checkpoint = 'cf.pth'
+checkpoint = 'mc.pth'
 prefix = 'movies'
 
 class MovieDataset:
