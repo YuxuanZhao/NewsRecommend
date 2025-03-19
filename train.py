@@ -1,8 +1,6 @@
 import pandas as pd
 import numpy as np
 import xgboost as xgb
-import math
-import faiss
 import time
 import os
 import pickle
@@ -133,7 +131,7 @@ def process_user_batch(user_batch, train_clicks, articles_df, embed_cols, user_p
     
     return batch_train_data, batch_train_labels, batch_group_ptr
 
-def prepare_training_data(train_clicks, articles_df, embed_cols, cache_file='training_data.pkl'):
+def prepare_training_data(train_clicks, articles_df, embed_cols, cache_file):
     """Prepare training data with caching"""
     if os.path.exists(cache_file):
         print(f"Loading precomputed training data from {cache_file}")
@@ -196,16 +194,17 @@ def prepare_training_data(train_clicks, articles_df, embed_cols, cache_file='tra
 # Usage example
 if __name__ == "__main__":
     start_time = time.time()
-    
+    colab = True
+    prefix = 'drive/MyDrive/' if colab else ''
     # Load data
-    articles = pd.read_csv('drive/MyDrive/news/articles.csv')
+    articles = pd.read_csv(prefix + 'news/articles.csv')
     embed_cols = articles.columns[4:]
-    train_clicks = pd.read_csv('drive/MyDrive/news/train_click_log.csv')
+    train_clicks = pd.read_csv(prefix + 'news/train_click_log.csv')
     
     print(f"Read CSV files in {time.time() - start_time:.2f} seconds")
     
     # Prepare training data with caching
-    train_data, train_labels, group_ptr = prepare_training_data(train_clicks, articles, embed_cols)
+    train_data, train_labels, group_ptr = prepare_training_data(train_clicks, articles, embed_cols, prefix + 'training_data.pkl')
     
     # Create XGBoost DMatrix
     dtrain = xgb.DMatrix(train_data, label=train_labels)
@@ -231,5 +230,5 @@ if __name__ == "__main__":
     print(f"Model training completed in {time.time() - model_start:.2f} seconds")
     
     # Save model
-    model.save_model('news_rec_model.json')
+    model.save_model(prefix + 'news_rec_model.json')
     print(f"Total processing time: {time.time() - start_time:.2f} seconds")
