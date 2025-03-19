@@ -1,80 +1,130 @@
 import pandas as pd
 import numpy as np
 import xgboost as xgb
-import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+import math
 
 articles = pd.read_csv('drive/MyDrive/news/articles.csv')
-click_log = pd.read_csv('drive/MyDrive/news/clicks.csv')
-click_log = click_log.head(1000) # 1000/1630633
+embed_cols = articles.columns[4:]
+train_clicks = pd.read_csv('drive/MyDrive/news/train_click_log.csv')
+test_clicks = pd.read_csv('drive/MyDrive/news/test_click_log.csv')
+train_clicks = train_clicks.head(1000) # 1112623
+test_clicks = test_clicks.head(2) # 518010
 
-pos_data = pd.merge(click_log, articles, left_on='click_article_id', right_on='article_id', how='inner')
-pos_data['label'] = 1  # 正样本
+def cosine_similarity(u, v):
+    norm_u = np.linalg.norm(u)
+    norm_v = np.linalg.norm(v)
+    if norm_u == 0 or norm_v == 0:
+        return 0
+    return np.dot(u, v) / (norm_u * norm_v)
 
-all_article_ids = set(articles['article_id'].values)
-articles_indexed = articles.set_index('article_id')
+def build_user_profile(clicks, articles_df):
+    merged = clicks.merge(articles_df, left_on='click_article_id', right_on='article_id', how='left')
+    profile = merged[embed_cols].mean().values
+    return profile
 
-neg_ratio = 4
+def compute_ndcg(rank):
+    if rank is None:
+        return 0.0
+    return 1.0 / math.log2(rank + 1)
+
+train_groups = train_clicks.groupby('user_id')
 train_data = []
-group_sizes = []  # 每个用户有几个样本
+train_labels = []
+group_ptr = []
 
-for user, group in pos_data.groupby('user_id'):
-    clicked_articles = set(group['click_article_id'].unique())
+for uid, group in train_groups:
+    group = group.sort_values('click_timestamp')
+    if len(group) < 2: continue
     
-    neg_article_ids = list(all_article_ids - clicked_articles)
-    n_neg = min(len(neg_article_ids), neg_ratio * len(group))
-    neg_sample_ids = np.random.choice(neg_article_ids, size=n_neg, replace=False)
-    neg_samples = articles_indexed.loc[neg_sample_ids].reset_index()
-    neg_samples['label'] = 0  # 负样本
-    neg_samples['user_id'] = user
+    history = group.iloc[:-1]
+    pos_click = group.iloc[-1]
     
-    user_group = pd.concat([group, neg_samples], ignore_index=True)
-    train_data.append(user_group)
-    group_sizes.append(user_group.shape[0])
+    user_profile = build_user_profile(history, articles)
+    
+    pos_article = articles[articles['article_id'] == pos_click['click_article_id']]
+    if pos_article.empty: continue # 会走到这里吗？
+    pos_embedding = pos_article[embed_cols].values.flatten()
+    
+    pos_score = cosine_similarity(user_profile, pos_embedding)
+    train_data.append([pos_score])
+    train_labels.append(1)
+    
+    n_negatives = 4
+    neg_candidates = articles.sample(n=n_negatives, random_state=42)
+    # neg_candidates = articles[articles['article_id'] != pos_click['click_article_id']].sample(n=n_negatives, random_state=42)
+    for _, neg in neg_candidates.iterrows():
+        neg_embedding = neg[embed_cols].values.flatten()
+        neg_score = cosine_similarity(user_profile, neg_embedding)
+        train_data.append([neg_score])
+        train_labels.append(0)
+    
+    group_ptr.append(1 + n_negatives)
 
-train_df = pd.concat(train_data, ignore_index=True)
-
-exclude_columns = ['click_article_id', 'click_timestamp', 
-                   'click_environment', 'click_deviceGroup', 'click_os', 
-                   'click_country', 'click_region', 'click_referrer_type', 
-                   'article_id', 'label']
-feature_columns = [col for col in train_df.columns if col not in exclude_columns]
-
-X = train_df[feature_columns].values
-y = train_df['label'].values
-
-dtrain = xgb.DMatrix(X, label=y)
-dtrain.set_group(group_sizes)
-
+dtrain = xgb.DMatrix(np.array(train_data), label=np.array(train_labels))
+dtrain.set_group(group_ptr)
 params = {
     'objective': 'rank:pairwise',
-    'eval_metric': 'ndcg',
     'eta': 0.1,
+    'gamma': 1.0,
+    'min_child_weight': 0.1,
     'max_depth': 6,
-    'seed': 42
+    'tree_method': 'hist',
+    'device': 'cuda',
+    'verbosity': 1
 }
-
 num_round = 50
-model = xgb.train(params, dtrain, num_round)
+model = xgb.train(params, dtrain, num_boost_round=num_round)
 
-plt.figure(figsize=(10, 8))
-xgb.plot_importance(model, max_num_features=20)
-plt.tight_layout()
-plt.savefig('feature_importance.png')
-
-model.save_model('article_ranking_model.bin')
-
-def rank_articles(user_id, candidate_article_ids):
-    candidates = articles_indexed.loc[candidate_article_ids].reset_index()
-    candidates['user_id'] = user_id
-    X_candidates = candidates.drop(columns=['article_id']).values
+def predict_for_user(user_clicks, articles_df, model):
+    history = user_clicks.sort_values('click_timestamp').iloc[:-1]
+    user_profile = build_user_profile(history, articles_df)
     
-    dtest = xgb.DMatrix(X_candidates)
+    # 对所有文章 score，现实中应该是对召回的那一部分
+    features = []
+    for idx, row in articles_df.iterrows():
+        emb = row[embed_cols].values.flatten()
+        score = cosine_similarity(user_profile, emb)
+        features.append(score)
+    
+    X = np.array(features).reshape(-1, 1)
+    dtest = xgb.DMatrix(X)
     preds = model.predict(dtest)
-    candidates['score'] = preds
     
-    ranked = candidates.sort_values('score', ascending=False)
-    return ranked['article_id'].tolist()
+    articles_df['pred_score'] = preds
+    top5 = articles_df.sort_values('pred_score', ascending=False).head(5)
+    return top5['article_id'].tolist()
 
-user_id_example = 123
-candidate_article_ids_example = list(np.random.choice(list(all_article_ids), size=10, replace=False))
-print("Ranked Articles:", rank_articles(user_id_example, candidate_article_ids_example))
+test_groups = test_clicks.groupby('user_id')
+ndcg_scores = []
+results = []
+
+for uid, group in test_groups:
+    if len(group) < 2:
+        continue  # not enough history
+    group_sorted = group.sort_values('click_timestamp')
+    ground_truth = group_sorted.iloc[-1]['click_article_id']
+    predictions = predict_for_user(group, articles, model)
+    
+    if ground_truth in predictions:
+        rank = predictions.index(ground_truth) + 1  # rank position (1-indexed)
+    else:
+        rank = None
+    
+    ndcg = compute_ndcg(rank)
+    ndcg_scores.append(ndcg)
+    results.append({
+        'user_id': uid,
+        'ground_truth': ground_truth,
+        'predictions': predictions,
+        'rank': rank,
+        'ndcg': ndcg
+    })
+
+# Calculate average NDCG over all users
+avg_ndcg = np.mean(ndcg_scores)
+print(f"Average NDCG: {avg_ndcg:.4f}")
+
+# Display evaluation results for a few users
+for r in results[:5]:
+    print(f"User {r['user_id']} - GT: {r['ground_truth']} - Predicted top5: {r['predictions']} - Rank: {r['rank']} - NDCG: {r['ndcg']:.4f}")
