@@ -232,3 +232,17 @@ if __name__ == "__main__":
     # Save model
     model.save_model(prefix + 'news_rec_model.json')
     print(f"Total processing time: {time.time() - start_time:.2f} seconds")
+
+# Read CSV files in 19.43 seconds
+# Preparing training data...
+# Precomputing user profiles...
+# 100%|██████████| 200000/200000 [00:44<00:00, 4468.38it/s]
+# Saving user profiles to user_profiles.h5
+# Precomputed 200000 user profiles in 47.61 seconds
+# Processing 200000 users in 16 batches using 8 cores
+# 100%|██████████| 16/16 [07:18<00:00, 27.39s/it]
+# Saving training data to drive/MyDrive/training_data.pkl
+# Training data preparation completed in 489.32 seconds
+# Training XGBoost model...
+# Model training completed in 17.47 seconds
+# Total processing time: 526.84 seconds
