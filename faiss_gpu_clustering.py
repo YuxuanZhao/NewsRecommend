@@ -1,9 +1,6 @@
 import numpy as np
 import faiss
 import torch
-import time
-
-start = time.time()
 
 articles = np.load('news/articles.npy')
 article_ids = articles[:, 0].astype(np.int64)         # shape: (364047,)
@@ -81,7 +78,6 @@ for uid, profile in user_profiles.items():
 # # 6. Save the result locally as a PyTorch file
 # # -------------------------------
 # # The result is a dictionary mapping each user_id to a tensor of article_ids.
-torch.save(user_to_result_articles, 'user_recommendations.pt')
+torch.save(user_to_result_articles, 'news/user_recommendations.pt')
 
 print("User recommendations saved to 'user_recommendations.pt'")
-print(time.time() - start)
