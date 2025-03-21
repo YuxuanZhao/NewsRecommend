@@ -1,16 +1,16 @@
 import numpy as np
 import faiss
-import torch
+from collections import Counter
 
 articles = np.load('news/articles.npy')
 article_ids = articles[:, 0].astype(np.int64)
 embeddings = articles[:, 1:].astype(np.float32)
 d = embeddings.shape[1]
 
-n_clusters = 350
+n_clusters = 250
 
 clustering = faiss.Clustering(d, n_clusters)
-clustering.niter = 20
+clustering.niter = 80
 clustering.verbose = True
 
 index = faiss.IndexFlatL2(d)
@@ -55,3 +55,10 @@ for uid, profile in user_profiles.items():
     user_to_result_articles[uid] = candidate_article_ids
 
 np.save('news/user_recommendations.npy', user_to_result_articles, allow_pickle=True)
+
+lengths = [len(arr) for arr in user_to_result_articles.values()]
+
+length_distribution = Counter(lengths)
+
+for length, count in sorted(length_distribution.items()):
+    print(f"Length {length}: {count} keys")
