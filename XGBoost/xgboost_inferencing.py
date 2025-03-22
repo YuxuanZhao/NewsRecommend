@@ -9,7 +9,7 @@ user_recommendations = np.load('news/user_recommendations.npy', allow_pickle=Tru
 test_user_ground_truth = np.load('news/test_user_ground_truth.npy', allow_pickle=True).item()
 
 model = xgb.Booster()
-model.load_model("xgboost_model.json")
+model.load_model("news/xgboost_model.json")
 
 def inference(args):
     user_id, candidates = args

@@ -52,4 +52,4 @@ if __name__ == '__main__':
         'verbosity': 1
     }
     model = xgb.train(params, dtrain, num_boost_round=100)
-    model.save_model("xgboost_model.json")
+    model.save_model("news/xgboost_model.json")

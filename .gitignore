@@ -1,8 +1,2 @@
 /news
-/movies
-/movies_sm
-/xgboost
-/retrieval
-/CIFAR10
-/logs
-/original_news
+/XGBoost/news
