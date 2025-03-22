@@ -2,10 +2,11 @@ import numpy as np
 import xgboost as xgb
 import multiprocessing as mp
 
-article_embedding_dict = np.load('news/article_embedding_dict.npy', allow_pickle=True).item()
-train_user_embedding_dict = np.load('news/train_user_profile.npy', allow_pickle=True).item()
+prefix = 'XGBoost/news/'
+article_embedding_dict = np.load(prefix + 'article_embedding_dict.npy', allow_pickle=True).item()
+train_user_embedding_dict = np.load(prefix + 'train_user_profile.npy', allow_pickle=True).item()
+clicked_article_ids = np.load(prefix + 'train_user_clicked_article_ids.npy', allow_pickle=True).item()
 all_article_ids = list(article_embedding_dict.keys())
-clicked_article_ids = np.load('news/train_user_clicked_article_ids.npy', allow_pickle=True).item()
 
 def preprocess_user(args):
     user_id, article_ids = args
@@ -52,4 +53,4 @@ if __name__ == '__main__':
         'verbosity': 1
     }
     model = xgb.train(params, dtrain, num_boost_round=100)
-    model.save_model("news/xgboost_model.json")
+    model.save_model(prefix + "xgboost_model.json")

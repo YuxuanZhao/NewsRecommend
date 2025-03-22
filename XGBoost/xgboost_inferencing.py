@@ -3,13 +3,14 @@ import numpy as np
 import xgboost as xgb
 import multiprocessing as mp
 
-article_embedding_dict = np.load('news/article_embedding_dict.npy', allow_pickle=True).item()
-test_user_embedding_dict = np.load('news/test_user_profile.npy', allow_pickle=True).item()
-user_recommendations = np.load('news/user_recommendations.npy', allow_pickle=True).item()
-test_user_ground_truth = np.load('news/test_user_ground_truth.npy', allow_pickle=True).item()
+prefix = 'XGBoost/news/'
+article_embedding_dict = np.load(prefix + 'article_embedding_dict.npy', allow_pickle=True).item()
+test_user_embedding_dict = np.load(prefix + 'test_user_profile.npy', allow_pickle=True).item()
+user_recommendations = np.load(prefix + 'user_recommendations.npy', allow_pickle=True).item()
+test_user_ground_truth = np.load(prefix + 'test_user_ground_truth.npy', allow_pickle=True).item()
 
 model = xgb.Booster()
-model.load_model("news/xgboost_model.json")
+model.load_model(prefix + "xgboost_model.json")
 
 def inference(args):
     user_id, candidates = args
