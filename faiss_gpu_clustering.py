@@ -3,29 +3,25 @@ import faiss
 from collections import Counter
 
 articles = np.load('news/articles.npy')
-article_ids = articles[:, 0].astype(np.int64)
-embeddings = articles[:, 1:].astype(np.float32)
-d = embeddings.shape[1]
+article_ids = articles[:, 0].astype(np.int64) # (364047,)
+embeddings = articles[:, 1:].astype(np.float32) # (364047, 253)
+d = embeddings.shape[1] # 253
 
-n_clusters = 250
-
-clustering = faiss.Clustering(d, n_clusters)
+num_clusters = 250
+clustering = faiss.Clustering(d, num_clusters)
 clustering.niter = 80
 clustering.verbose = True
 
-index = faiss.IndexFlatL2(d)
-
+index = faiss.IndexHNSWFlat(d, 32)
 embeddings = np.ascontiguousarray(embeddings)
 clustering.train(embeddings, index)
 
-centroids = faiss.vector_float_to_array(clustering.centroids).reshape(n_clusters, d)
-
+centroids = faiss.vector_float_to_array(clustering.centroids).reshape(num_clusters, d)
 
 D, assignments = index.search(embeddings, 1)
 assignments = assignments.flatten()
 
-
-cluster_to_articles = {i: article_ids[assignments == i] for i in range(n_clusters)}
+cluster_to_articles = {i: article_ids[assignments == i] for i in range(num_clusters)}
 
 article_id_to_embedding = {aid: emb for aid, emb in zip(article_ids, embeddings)}
 
@@ -44,7 +40,6 @@ for uid, emb_list in user_to_embeddings.items():
 
 centroid_index = faiss.IndexFlatL2(d)
 centroid_index.add(centroids)
-
 
 user_to_result_articles = {}
 for uid, profile in user_profiles.items():
