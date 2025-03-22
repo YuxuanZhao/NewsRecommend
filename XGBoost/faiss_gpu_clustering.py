@@ -1,14 +1,14 @@
 import numpy as np
 import faiss
 
-prefix = 'XGBoost/news/'
+prefix = 'news/'
 
 articles = np.load(prefix + 'articles.npy')
 article_ids = articles[:, 0].astype(np.int64) # (364047,)
 embeddings = articles[:, 1:].astype(np.float32) # (364047, 253)
 embeddings_size = embeddings.shape[1]
 
-num_clusters = 300
+num_clusters = 400
 clustering = faiss.Clustering(embeddings_size, num_clusters)
 clustering.niter = 80
 clustering.verbose = True

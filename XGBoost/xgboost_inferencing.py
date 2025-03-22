@@ -3,7 +3,7 @@ import numpy as np
 import xgboost as xgb
 import multiprocessing as mp
 
-prefix = 'XGBoost/news/'
+prefix = 'news/'
 article_embedding_dict = np.load(prefix + 'article_embedding_dict.npy', allow_pickle=True).item()
 test_user_embedding_dict = np.load(prefix + 'test_user_profile.npy', allow_pickle=True).item()
 user_recommendations = np.load(prefix + 'user_recommendations.npy', allow_pickle=True).item()
