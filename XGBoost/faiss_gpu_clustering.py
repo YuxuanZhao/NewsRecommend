@@ -8,7 +8,7 @@ article_ids = articles[:, 0].astype(np.int64) # (364047,)
 embeddings = articles[:, 1:].astype(np.float32) # (364047, 253)
 embeddings_size = embeddings.shape[1]
 
-num_clusters = 400
+num_clusters = 450
 clustering = faiss.Clustering(embeddings_size, num_clusters)
 clustering.niter = 80
 clustering.verbose = True
