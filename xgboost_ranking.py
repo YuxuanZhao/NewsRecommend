@@ -12,17 +12,7 @@ article_embedding_dict = {aid: emb for aid, emb in zip(article_ids, article_embe
 
 train_click_log = np.load('news/train_click_log.npy')
 
-user_embeddings = defaultdict(list)
-for user_id, art_id in train_click_log:
-    user_embeddings[int(user_id)].append(article_embedding_dict.get(int(art_id)))
-
-user_embedding_dict = {}
-for user_id, emb_list in user_embeddings.items():
-    emb_list = [emb for emb in emb_list if emb is not None]
-    if emb_list:
-        user_embedding_dict[user_id] = np.mean(emb_list, axis=0)
-    else:
-        user_embedding_dict[user_id] = np.zeros(article_embeddings.shape[1])
+user_embedding_dict = np.load('news/train_user_profile.npy', allow_pickle=True).item()
 
 X_train = []
 y_train = []
@@ -104,11 +94,11 @@ model = xgb.train(params, dtrain, num_boost_round=100)
 
 test_click_log = np.load('news/test_click_log.npy')
 
-user_embeddings = defaultdict(list)
 test_user_ground_truth = {}
 for user_id, art_id in test_click_log:
-    user_embeddings[int(user_id)].append(article_embedding_dict.get(int(art_id)))
     test_user_ground_truth[int(user_id)] = int(art_id)
+
+user_embedding_dict = np.load('news/test_user_profile.npy', allow_pickle=True).item()
 
 user_recommendations = np.load('news/user_recommendations.npy', allow_pickle=True).item()
 
@@ -118,8 +108,6 @@ for user_id, candidates in user_recommendations.items():
     if len(candidates) == 0: continue
     user_id = int(user_id)
     u_emb = user_embedding_dict.get(user_id)
-    if u_emb is None:
-        u_emb = np.zeros(article_embeddings.shape[1])
     
     candidate_features = []
     for art_id in candidates:
