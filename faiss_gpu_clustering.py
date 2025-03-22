@@ -15,14 +15,11 @@ clustering.verbose = True
 index = faiss.IndexHNSWFlat(d, 32)
 embeddings = np.ascontiguousarray(embeddings)
 clustering.train(embeddings, index)
-
 centroids = faiss.vector_float_to_array(clustering.centroids).reshape(num_clusters, d)
 
 D, assignments = index.search(embeddings, 1)
 assignments = assignments.flatten()
-
 cluster_to_articles = {i: article_ids[assignments == i] for i in range(num_clusters)}
-
 article_id_to_embedding = {aid: emb for aid, emb in zip(article_ids, embeddings)}
 
 click_log = np.load('news/test_click_log.npy')
