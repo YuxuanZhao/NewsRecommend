@@ -13,10 +13,10 @@ clustering = faiss.Clustering(embeddings_size, num_clusters)
 clustering.niter = 80
 clustering.verbose = True
 
-index = faiss.IndexHNSWFlat(embeddings_size, 32)
+index = faiss.IndexHNSWFlat(embeddings_size, 32) # what happen?
 embeddings = np.ascontiguousarray(embeddings)
 clustering.train(embeddings, index)
-centroids = faiss.vector_float_to_array(clustering.centroids).reshape(num_clusters, embeddings_size)
+centroids = faiss.vector_float_to_array(clustering.centroids).reshape(num_clusters, embeddings_size) # original shape?
 
 _, assignments = index.search(embeddings, 1)
 assignments = assignments.flatten()
@@ -33,4 +33,4 @@ for uid, profile in user_profiles.items():
     candidate_article_ids = np.array(cluster_to_articles[int(I[0, 0])])
     user_recommendations[uid] = candidate_article_ids
 
-np.save(prefix + 'user_recommendations.npy', user_recommendations, allow_pickle=True)
+np.save(prefix + 'test_user_recommendations.npy', user_recommendations, allow_pickle=True)
