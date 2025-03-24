@@ -108,12 +108,8 @@ class AttentionLayer(nn.Module):
 class DIN(nn.Module):
     def __init__(self, embedding_dim, attention_units, fc_units=64):
         super(DIN, self).__init__()
-        self.embedding_dim = embedding_dim
-        
-        # Attention layer
-        self.attention = AttentionLayer(embedding_dim, attention_units)
-        
-        # Fully connected layers for final prediction
+        self.embedding_dim = embedding_dim        
+        self.attention = AttentionLayer(embedding_dim, attention_units)        
         self.fc_layers = nn.Sequential(
             nn.BatchNorm1d(embedding_dim * 2),
             nn.Linear(embedding_dim * 2, fc_units),
@@ -125,12 +121,8 @@ class DIN(nn.Module):
             nn.Dropout(0.2),
             nn.BatchNorm1d(fc_units // 2),
             nn.Linear(fc_units // 2, 1),
-        )
-        
-        # Separate sigmoid for better numerical stability
+        )        
         self.sigmoid = nn.Sigmoid()
-        
-        # Initialize weights
         self._initialize_weights()
         
     def _initialize_weights(self):
@@ -163,33 +155,16 @@ def train(model, train_loader, optimizer, criterion, device, clip_value=1.0):
     processed_batches = 0
     
     for batch in tqdm(train_loader, desc="Training"):            
-        history_emb = batch['history_emb'].to(device)
-        target_emb = batch['target_emb'].to(device)
-        labels = batch['label'].to(device)
-        
-        # Forward pass
+        history_emb, target_emb, labels = batch['history_emb'].to(device), batch['target_emb'].to(device), batch['label'].to(device)
         optimizer.zero_grad()
         logits, _ = model(target_emb, history_emb)
-        
-        # Calculate loss
         loss = criterion(logits, labels)
-        
-        # Check if loss is valid
-        if not torch.isnan(loss) and not torch.isinf(loss):
-            # Backward pass and optimize
-            loss.backward()
-            
-            # Gradient clipping to prevent exploding gradients
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
-            
-            optimizer.step()
-            
-            epoch_loss += loss.item()
-            processed_batches += 1
-        else:
-            print("Warning: Found NaN or Inf loss, skipping batch")
-    
-    # Return average loss over all valid batches
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
+        optimizer.step()
+        epoch_loss += loss.item()
+        processed_batches += 1
+
     return epoch_loss / max(1, processed_batches)
 
 def evaluate(model, test_loader, criterion, device):
@@ -249,16 +224,9 @@ if __name__ == "__main__":
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
     criterion = nn.BCEWithLogitsLoss() # sigmoid + BCE
     
-    # Training loop
     best_loss = float('inf')
     patience_counter = 0
     max_patience = 3
-        
-    # Check data distribution
-    train_labels = [sample['label'] for sample in train_dataset.samples]
-    train_label_counts = {0: train_labels.count(0), 1: train_labels.count(1)}
-    print(f"Training data distribution: {train_label_counts}")
-    
     for epoch in range(NUM_EPOCHS):
         train_loss = train(model, train_loader, optimizer, criterion, device)
         val_loss, val_accuracy = evaluate(model, test_loader, criterion, device)
