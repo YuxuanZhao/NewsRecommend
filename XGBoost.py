@@ -2,6 +2,7 @@ import numpy as np
 import xgboost as xgb
 import multiprocessing as mp
 from sklearn.metrics import ndcg_score
+import os
 
 prefix = 'news/'
 article_embedding_dict = np.load(prefix + 'article_embedding_dict.npy', allow_pickle=True).item()
@@ -11,6 +12,11 @@ test_user_ground_truth = np.load(prefix + 'test_user_ground_truth.npy', allow_pi
 test_user_embedding_dict = np.load(prefix + 'test_user_profile.npy', allow_pickle=True).item()
 test_user_recommendations = np.load(prefix + 'test_user_recommendations.npy', allow_pickle=True).item()
 all_article_ids = list(article_embedding_dict.keys())
+
+if os.path.exists(prefix + "xgboost_model.json"):
+    model = xgb.Booster()
+    model.load_model(prefix + "xgboost_model.json")
+    print('Model loaded')
 
 def preprocess_user(args):
     user_id, article_ids = args
@@ -58,26 +64,28 @@ def inference(args):
     return ndcg_score([relevance], [np.arange(5, 0, -1)])
 
 if __name__ == '__main__':
-    X_train, y_train, group = preprocess()
-    dtrain = xgb.DMatrix(X_train, label=y_train)
-    dtrain.set_group(group)
+    if not model:
+        X_train, y_train, group = preprocess()
+        dtrain = xgb.DMatrix(X_train, label=y_train)
+        dtrain.set_group(group)
 
-    params = {
-        'objective': 'rank:pairwise',
-        'eta': 0.1,
-        'gamma': 1.0,
-        'min_child_weight': 0.1,
-        'max_depth': 6,
-        'eval_metric': 'ndcg',
-        'seed': 42,
-        'verbosity': 1
-    }
-    model = xgb.train(params, dtrain, num_boost_round=100)
-    model.save_model(prefix + "xgboost_model.json")
+        params = {
+            'objective': 'rank:pairwise',
+            'eta': 0.1,
+            'gamma': 1.0,
+            'min_child_weight': 0.1,
+            'max_depth': 6,
+            'eval_metric': 'ndcg',
+            'seed': 42,
+            'verbosity': 1
+        }
+        model = xgb.train(params, dtrain, num_boost_round=100)
+        model.save_model(prefix + "xgboost_model.json")
+        print('Model trained')
 
     with mp.get_context('spawn').Pool(mp.cpu_count()) as pool:
         results = pool.map(inference, list(test_user_recommendations.items()))
     pool.close()
     pool.join()
     avg_ndcg = np.mean(results)
-    print(f'Average NDCG@5: {avg_ndcg:.4f}')
+    print(f'NDCG@5: {avg_ndcg:.4f}')
