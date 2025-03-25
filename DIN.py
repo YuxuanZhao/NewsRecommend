@@ -6,14 +6,19 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 import random
 from tqdm import tqdm
+import optuna
 
 prefix = 'news/'
 EMBED_DIM = 253
-ATTN_UNITS = 64
+ATTN_UNITS = 128
 MAX_HIST = 50
 BATCH_SIZE = 128
 NUM_WORKERS = 20
-EPOCHS = 1
+EPOCHS = 5
+FC_UNITS = 64
+DROPOUT_RATE = 0.2675
+LR = 1.24e-3
+WEIGHT_DECAY = 5.95e-6
 
 article_emb = np.load(prefix + 'article_embedding_dict.npy', allow_pickle=True).item()
 article_ids = list(article_emb.keys())
@@ -110,13 +115,13 @@ class AttentionLayer(nn.Module):
         return out
 
 class DIN(nn.Module):
-    def __init__(self, emb_dim, attn_units, fc_units=64):
+    def __init__(self, emb_dim, attn_units, fc_units=64, dropout_rate=0.2):
         super().__init__()
         self.attn = AttentionLayer(emb_dim, attn_units)
         self.fc = nn.Sequential(
             nn.BatchNorm1d(emb_dim * 2), 
-            nn.Linear(emb_dim * 2, fc_units), nn.ReLU(), nn.Dropout(0.2), nn.BatchNorm1d(fc_units), 
-            nn.Linear(fc_units, fc_units // 2), nn.ReLU(), nn.Dropout(0.2), nn.BatchNorm1d(fc_units // 2), 
+            nn.Linear(emb_dim * 2, fc_units), nn.ReLU(), nn.Dropout(dropout_rate), nn.BatchNorm1d(fc_units), 
+            nn.Linear(fc_units, fc_units // 2), nn.ReLU(), nn.Dropout(dropout_rate), nn.BatchNorm1d(fc_units // 2), 
             nn.Linear(fc_units // 2, 1)
         )
         self.sigmoid = nn.Sigmoid()
@@ -191,7 +196,7 @@ def evaluate(model, loader, criterion, device):
     avg_ndcg = np.mean(ndcgs)
     return avg_loss, avg_ndcg
 
-if __name__ == "__main__":
+def main():
     torch.manual_seed(42)
     np.random.seed(42)
     random.seed(42)
@@ -203,8 +208,8 @@ if __name__ == "__main__":
     eval_loader = DataLoader(eval_set, batch_size=BATCH_SIZE, shuffle=False,
                            num_workers=NUM_WORKERS, collate_fn=custom_collate_fn)
     
-    model = DIN(EMBED_DIM, ATTN_UNITS).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
+    model = DIN(EMBED_DIM, ATTN_UNITS, fc_units=FC_UNITS, dropout_rate=DROPOUT_RATE).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
     criterion = nn.BCEWithLogitsLoss()
 
@@ -213,4 +218,36 @@ if __name__ == "__main__":
         eval_loss, ndcg = evaluate(model, eval_loader, criterion, device)
         scheduler.step(eval_loss)
         print(f"Epoch {epoch+1}: Train {train_loss:.4f}, Eval {eval_loss:.4f}, NDCG {ndcg:.4f}")
-    torch.save(model.state_dict(), 'best_din_model.pth')
+    # torch.save(model.state_dict(), 'best_din_model.pth')
+
+def objective(trial):
+    lr = trial.suggest_float('lr', 1e-5, 1e-2, log=True)
+    weight_decay = trial.suggest_float('weight_decay', 1e-6, 1e-3, log=True)
+    attn_units = trial.suggest_int('attn_units', 32, 128, step=32)
+    fc_units = trial.suggest_int('fc_units', 32, 128, step=32)
+    dropout_rate = trial.suggest_uniform('dropout_rate', 0.1, 0.5)
+    batch_size = trial.suggest_categorical('batch_size', [64, 128, 256])
+
+    train_set = TrainDataset()
+    train_loader = DataLoader(train_set, batch_size, shuffle=True, num_workers=NUM_WORKERS)
+    eval_set = EvalDataset()
+    eval_loader = DataLoader(eval_set, batch_size=BATCH_SIZE, shuffle=False,
+                           num_workers=NUM_WORKERS, collate_fn=custom_collate_fn)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model = DIN(EMBED_DIM, attn_units, fc_units=fc_units, dropout_rate=dropout_rate).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
+    criterion = nn.BCEWithLogitsLoss()
+
+    for _ in range(EPOCHS):
+        train(model, train_loader, optimizer, criterion, device)
+        _, ndcg = evaluate(model, eval_loader, criterion, device)
+        scheduler.step(ndcg)
+    return ndcg
+
+if __name__ == "__main__":
+    # study = optuna.create_study(direction='maximize')
+    # study.optimize(objective, n_trials=20)
+    # print("Best hyperparameters:", study.best_trial.params)
+    main()
