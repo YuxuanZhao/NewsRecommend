@@ -5,4 +5,9 @@ sudo rmmod nvidia_uvm
 sudo modprobe nvidia_uvm
 ```
 
-Final model performance - Loss: 0.1383, Accuracy: 0.9644
+# NDCG@5
+
+| model | NDCG@5 |
+| ----- | ------ |
+| DIN | 0.2502 |
+| XGBoost | 0.1176 |

@@ -22,11 +22,11 @@ def inference(args):
     dtest = xgb.DMatrix(candidate_features)
     scores = model.predict(dtest)
     
-    ranked_idx = np.argsort(-scores)[:50]
+    ranked_idx = np.argsort(-scores)[:5]
     ranked_candidates = np.array(candidates)[ranked_idx]
     
     relevance = [1 if int(art) == test_user_ground_truth[user_id] else 0 for art in ranked_candidates]
-    return ndcg_score([relevance], [np.arange(50, 0, -1)])
+    return ndcg_score([relevance], [np.arange(5, 0, -1)])
 
 if __name__ == '__main__':
     with mp.get_context('spawn').Pool(mp.cpu_count()) as pool:
@@ -34,4 +34,4 @@ if __name__ == '__main__':
     pool.close()
     pool.join()
     avg_ndcg = np.mean(results)
-    print(f'Average NDCG@50: {avg_ndcg:.4f}')
+    print(f'Average NDCG@5: {avg_ndcg:.4f}')
