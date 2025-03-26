@@ -10,15 +10,8 @@ import optuna
 
 prefix = 'news/'
 EMBED_DIM = 253
-ATTN_UNITS = 128
-MAX_HIST = 50
-BATCH_SIZE = 128
 NUM_WORKERS = 20
-EPOCHS = 5
-FC_UNITS = 64
-DROPOUT_RATE = 0.2675
-LR = 1.24e-3
-WEIGHT_DECAY = 5.95e-6
+EPOCHS = 1
 
 article_emb = np.load(prefix + 'article_embedding_dict.npy', allow_pickle=True).item()
 article_ids = list(article_emb.keys())
@@ -27,11 +20,12 @@ test_user_clicks = np.load(prefix + 'test_user_clicked_article_ids.npy', allow_p
 test_user_recs = np.load(prefix + 'test_user_recommendations.npy', allow_pickle=True).item()
 
 class EvalDataset(Dataset):
-    def __init__(self):
+    def __init__(self, max_history):
+        self.max_history = max_history
         self.data = []
         for uid, clicks in test_user_clicks.items():
             if len(clicks) <= 1: continue
-            history = clicks[:-1][-MAX_HIST:]
+            history = clicks[:-1][-max_history:]
             candidates = np.append(test_user_recs[uid], [clicks[-1]])
             labels = [0 for _ in range(len(test_user_recs[uid]) + 1)]
             labels[-1] = 1
@@ -47,7 +41,7 @@ class EvalDataset(Dataset):
 
     def __getitem__(self, idx):
         sample = self.data[idx]
-        hist_emb = np.zeros((MAX_HIST, EMBED_DIM))
+        hist_emb = np.zeros((self.max_history, EMBED_DIM))
         for i, aid in enumerate(sample['history']):
             hist_emb[i] = article_emb[aid]
         cand_embs = []
@@ -69,11 +63,12 @@ def custom_collate_fn(batch):
     return {'uid': uids, 'history_emb': history_emb, 'cand_embs': cand_embs, 'labels': labels}
 
 class TrainDataset(Dataset):
-    def __init__(self):
+    def __init__(self, max_history):
+        self.max_history = max_history
         self.samples = []
         for uid, clicks in train_user_clicks.items():
             for i in range(1, len(clicks)):
-                history = clicks[:i][-MAX_HIST:]
+                history = clicks[:i][-max_history:]
                 self.samples.append({'uid': uid, 'history': history, 'target': clicks[i], 'label': 1})
                 neg = random.choice(article_ids)
                 while neg in clicks: neg = random.choice(article_ids)
@@ -85,7 +80,7 @@ class TrainDataset(Dataset):
     def __getitem__(self, idx):
         sample = self.samples[idx]
         target_emb = article_emb[sample['target']]
-        hist_emb = np.zeros((MAX_HIST, EMBED_DIM))
+        hist_emb = np.zeros((self.max_history, EMBED_DIM))
         for i, aid in enumerate(sample['history']):
             hist_emb[i] = article_emb[aid]
         return {
@@ -115,7 +110,7 @@ class AttentionLayer(nn.Module):
         return out
 
 class DIN(nn.Module):
-    def __init__(self, emb_dim, attn_units, fc_units=64, dropout_rate=0.2):
+    def __init__(self, emb_dim, attn_units, fc_units, dropout_rate):
         super().__init__()
         self.attn = AttentionLayer(emb_dim, attn_units)
         self.fc = nn.Sequential(
@@ -156,7 +151,7 @@ def train(model, loader, optimizer, criterion, device, clip=1.0):
         total_loss += loss.item()
     return total_loss / len(loader)
 
-def evaluate(model, loader, criterion, device):
+def evaluate(model, loader, criterion, device, k):
     model.eval()
     total_loss = 0
     ndcgs = []
@@ -184,9 +179,9 @@ def evaluate(model, loader, criterion, device):
 
                 probs = torch.sigmoid(logits).cpu().numpy()  # (num_candidates,)
                 labs = labels.cpu().numpy()
-                top_5_idx = np.argsort(-probs)[:5]
+                top_k_idx = np.argsort(-probs)[:k]
                 ndcg = 0.0
-                for rank, idx in enumerate(top_5_idx, start=1):
+                for rank, idx in enumerate(top_k_idx, start=1):
                     if labs[idx] == 1:
                         ndcg = 1 / np.log2(rank + 1)
                         break
@@ -196,58 +191,36 @@ def evaluate(model, loader, criterion, device):
     avg_ndcg = np.mean(ndcgs)
     return avg_loss, avg_ndcg
 
-def main():
+def objective(trial):
     torch.manual_seed(42)
     np.random.seed(42)
     random.seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    train_set = TrainDataset()
-    train_loader = DataLoader(train_set, BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-    eval_set = EvalDataset()
-    eval_loader = DataLoader(eval_set, batch_size=BATCH_SIZE, shuffle=False,
-                           num_workers=NUM_WORKERS, collate_fn=custom_collate_fn)
-    
-    model = DIN(EMBED_DIM, ATTN_UNITS, fc_units=FC_UNITS, dropout_rate=DROPOUT_RATE).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
-    criterion = nn.BCEWithLogitsLoss()
-
-    for epoch in range(EPOCHS):
-        train_loss = train(model, train_loader, optimizer, criterion, device)
-        eval_loss, ndcg = evaluate(model, eval_loader, criterion, device)
-        scheduler.step(eval_loss)
-        print(f"Epoch {epoch+1}: Train {train_loss:.4f}, Eval {eval_loss:.4f}, NDCG {ndcg:.4f}")
-    # torch.save(model.state_dict(), 'best_din_model.pth')
-
-def objective(trial):
     lr = trial.suggest_float('lr', 1e-5, 1e-2, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-6, 1e-3, log=True)
     attn_units = trial.suggest_int('attn_units', 32, 128, step=32)
     fc_units = trial.suggest_int('fc_units', 32, 128, step=32)
-    dropout_rate = trial.suggest_uniform('dropout_rate', 0.1, 0.5)
+    dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5)
     batch_size = trial.suggest_categorical('batch_size', [64, 128, 256])
+    max_history = trial.suggest_int('max_history', 32, 128, step=32)
 
-    train_set = TrainDataset()
+    train_set = TrainDataset(max_history)
     train_loader = DataLoader(train_set, batch_size, shuffle=True, num_workers=NUM_WORKERS)
-    eval_set = EvalDataset()
-    eval_loader = DataLoader(eval_set, batch_size=BATCH_SIZE, shuffle=False,
-                           num_workers=NUM_WORKERS, collate_fn=custom_collate_fn)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    model = DIN(EMBED_DIM, attn_units, fc_units=fc_units, dropout_rate=dropout_rate).to(device)
+    eval_set = EvalDataset(max_history)
+    eval_loader = DataLoader(eval_set, batch_size, shuffle=False, num_workers=NUM_WORKERS, collate_fn=custom_collate_fn)
+    model = DIN(EMBED_DIM, attn_units, fc_units, dropout_rate).to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
     criterion = nn.BCEWithLogitsLoss()
 
     for _ in range(EPOCHS):
         train(model, train_loader, optimizer, criterion, device)
-        _, ndcg = evaluate(model, eval_loader, criterion, device)
-        scheduler.step(ndcg)
+        val_loss, ndcg = evaluate(model, eval_loader, criterion, device, 5)
+        scheduler.step(val_loss)
     return ndcg
 
 if __name__ == "__main__":
-    # study = optuna.create_study(direction='maximize')
-    # study.optimize(objective, n_trials=20)
-    # print("Best hyperparameters:", study.best_trial.params)
-    main()
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=20)
+    print("Best:", study.best_trial.params)
