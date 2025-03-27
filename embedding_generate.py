@@ -104,24 +104,31 @@ def main():
         print(f"Epoch {epoch+1}/{NUM_EPOCHS}, Train: {train_loss:.4f}, Test: {train_loss:.4f}")
         if eval_loss < best_loss:
             best_loss = eval_loss
-            torch.save(model.state_dict(), 'best_eg_model.pth')
+            torch.save(model.state_dict(), prefix + 'best_eg_model.pth')
 
 def inference():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     model = ArticleEmbeddingModel(NUM_FEATURE, fc_dim=FC_DIM, embedding_dim=EMBEDDING_DIM, dropout_rate=DROPOUT).to(device)
-    model.load_state_dict(torch.load('best_eg_model.pth', map_location=device, weights_only=True))
+    model.load_state_dict(torch.load(prefix + 'best_eg_model.pth', map_location=device, weights_only=True))
     model.eval()
     
-    result = {}
-    
+    d = {}
     with torch.no_grad():
         for article_id, feature in tqdm(articleid_to_feature.items(), desc="Computing embeddings"):
             feature_tensor = torch.tensor(feature, dtype=torch.float).unsqueeze(0).to(device)
             embedding = model(feature_tensor)
-            result[article_id] = embedding.squeeze(0).cpu().numpy()
-    
-    np.save('result.npy', result)
+            d[article_id] = embedding.squeeze(0).cpu().numpy()
+    np.save('article_dict.npy', d)
+
+    rows = []
+    for article_id, values in d.items():
+        row = np.append(values, article_id)
+        row = np.array(row)
+        rows.append(row)
+
+    result_array = np.array(rows, dtype=object)
+    np.save("article_table.npy", result_array)
 
 if __name__ == '__main__':
     inference()
