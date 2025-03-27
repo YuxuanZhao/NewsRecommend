@@ -12,12 +12,12 @@ prefix = 'news/'
 NUM_WORKERS = 20
 
 # article_embedding_dict
-article_emb = np.load(prefix + 'result.npy', allow_pickle=True).item()
+article_emb = np.load(prefix + 'article_dict.npy', allow_pickle=True).item()
 article_ids = list(article_emb.keys())
 EMBED_DIM = len(article_emb[article_ids[0]])
 train_user_clicks = np.load(prefix + 'train_user_clicked_article_ids.npy', allow_pickle=True).item()
 test_user_clicks = np.load(prefix + 'test_user_clicked_article_ids.npy', allow_pickle=True).item()
-test_user_recs = np.load(prefix + 'filtered_recommendations.npy', allow_pickle=True).item()
+test_user_recs = np.load(prefix + 'test_user_recommendations.npy', allow_pickle=True).item()
 
 class EvalDataset(Dataset):
     def __init__(self, max_history):
@@ -254,7 +254,7 @@ def main():
         scheduler.step(val_loss)
 
 if __name__ == "__main__":
-    # study = optuna.create_study(direction='maximize')
-    # study.optimize(objective, n_trials=20)
-    # print("Best:", study.best_trial.params)
-    main()
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=20)
+    print("Best:", study.best_trial.params)
+    # main()
