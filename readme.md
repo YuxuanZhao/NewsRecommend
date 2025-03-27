@@ -14,5 +14,9 @@ sudo modprobe nvidia_uvm
 | DIN | 0.2605 |
 | XGBoost | 0.1176 |
 
-Best is trial 19 with value: 0.8866231619694659.
-Best: {'lr': 0.0016221188831567399, 'weight_decay': 8.964506615010346e-05, 'attn_units': 128, 'fc_units': 32, 'dropout_rate': 0.3626827881888008, 'batch_size': 64, 'max_history': 64}
+| centroid | ground truth | min | max |
+| -------- | ------------ | --- | --- |
+| 325 | 14265 | 433 | 4672 |
+| 300 | 15564 | 400 | 4974 |
+| 275 | 14752 | 142 | 4240 |
+| 250 | 14275 | 161 | 4385 |
