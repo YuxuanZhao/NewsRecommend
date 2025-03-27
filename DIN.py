@@ -9,15 +9,15 @@ from tqdm import tqdm
 import optuna
 
 prefix = 'news/'
-EMBED_DIM = 253
 NUM_WORKERS = 20
-EPOCHS = 1
 
-article_emb = np.load(prefix + 'article_embedding_dict.npy', allow_pickle=True).item()
+# article_embedding_dict
+article_emb = np.load(prefix + 'result.npy', allow_pickle=True).item()
 article_ids = list(article_emb.keys())
+EMBED_DIM = len(article_emb[article_ids[0]])
 train_user_clicks = np.load(prefix + 'train_user_clicked_article_ids.npy', allow_pickle=True).item()
 test_user_clicks = np.load(prefix + 'test_user_clicked_article_ids.npy', allow_pickle=True).item()
-test_user_recs = np.load(prefix + 'test_user_recommendations.npy', allow_pickle=True).item()
+test_user_recs = np.load(prefix + 'filtered_recommendations.npy', allow_pickle=True).item()
 
 class EvalDataset(Dataset):
     def __init__(self, max_history):
@@ -26,13 +26,15 @@ class EvalDataset(Dataset):
         for uid, clicks in test_user_clicks.items():
             if len(clicks) <= 1: continue
             history = clicks[:-1][-max_history:]
-            candidates = np.append(test_user_recs[uid], [clicks[-1]])
-            labels = [0 for _ in range(len(test_user_recs[uid]) + 1)]
-            labels[-1] = 1
+            labels = [0 for _ in range(len(test_user_recs[uid]))]
+            for i, article_id in enumerate(test_user_recs[uid]):
+                if int(article_id) == int(clicks[-1]):
+                    labels[i] = 1
+                    break
             self.data.append({
                 'uid': uid,
                 'history': history,
-                'candidates': candidates,
+                'candidates': test_user_recs[uid],
                 'labels': labels
             })
 
@@ -204,6 +206,7 @@ def objective(trial):
     dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5)
     batch_size = trial.suggest_categorical('batch_size', [64, 128, 256])
     max_history = trial.suggest_int('max_history', 32, 128, step=32)
+    epochs = 2
 
     train_set = TrainDataset(max_history)
     train_loader = DataLoader(train_set, batch_size, shuffle=True, num_workers=NUM_WORKERS)
@@ -214,13 +217,44 @@ def objective(trial):
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
     criterion = nn.BCEWithLogitsLoss()
 
-    for _ in range(EPOCHS):
+    for _ in range(epochs):
         train(model, train_loader, optimizer, criterion, device)
         val_loss, ndcg = evaluate(model, eval_loader, criterion, device, 5)
         scheduler.step(val_loss)
     return ndcg
 
+def main():
+    torch.manual_seed(42)
+    np.random.seed(42)
+    random.seed(42)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    lr = 1.62e-3
+    weight_decay = 8.96e-5
+    attn_units = 128
+    fc_units = 32
+    dropout_rate = 0.36
+    batch_size = 64
+    max_history = 64
+    epochs = 5
+
+    train_set = TrainDataset(max_history)
+    train_loader = DataLoader(train_set, batch_size, shuffle=True, num_workers=NUM_WORKERS)
+    eval_set = EvalDataset(max_history)
+    eval_loader = DataLoader(eval_set, batch_size, shuffle=False, num_workers=NUM_WORKERS, collate_fn=custom_collate_fn)
+    model = DIN(EMBED_DIM, attn_units, fc_units, dropout_rate).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
+    criterion = nn.BCEWithLogitsLoss()
+
+    for epoch in range(epochs):
+        train_loss = train(model, train_loader, optimizer, criterion, device)
+        val_loss, ndcg = evaluate(model, eval_loader, criterion, device, 5)
+        print(f'Epoch {epoch + 1}: Train {train_loss}, Validate {val_loss}, NDCG {ndcg}')
+        scheduler.step(val_loss)
+
 if __name__ == "__main__":
-    study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=20)
-    print("Best:", study.best_trial.params)
+    # study = optuna.create_study(direction='maximize')
+    # study.optimize(objective, n_trials=20)
+    # print("Best:", study.best_trial.params)
+    main()
