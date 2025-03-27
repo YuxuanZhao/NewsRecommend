@@ -1,27 +1,22 @@
 import numpy as np
-from collections import defaultdict, Counter
+from collections import Counter
 
-test_click_log = np.load('news/test_click_log.npy')
-article_embedding_dict = np.load('news/article_embedding_dict.npy', allow_pickle=True).item()
+# Load the dictionaries from .npy files
+ground_truth = np.load('news/test_user_ground_truth.npy', allow_pickle=True).item()
+recommendations = np.load('news/test_user_recommendations.npy', allow_pickle=True).item()
 
-test_user_ground_truth = {}
-embeddings = defaultdict(list)
-user_profile = {}
-for i, (user_id, art_id) in enumerate(test_click_log):
-    if i == len(test_click_log) - 1 or test_click_log[i+1][0] != user_id:
-        test_user_ground_truth[int(user_id)] = int(art_id)
-        if user_id not in embeddings:
-            embeddings[int(user_id)].append(article_embedding_dict[art_id])
-    else:
-        embeddings[int(user_id)].append(article_embedding_dict[art_id])
+# Initialize counters
+got_count = 0
 
-for user_id, embs in embeddings.items():
-    user_profile[user_id] = np.mean(embs, axis=0)
+# Iterate over each user in the ground truth
+for user_id, true_article in ground_truth.items():
+    rec_articles = recommendations.get(user_id, [])
+    if true_article in rec_articles:
+        got_count += 1
 
-np.save("news/test_user_ground_truth.npy", test_user_ground_truth)
-np.save("news/test_user_profile.npy", user_profile)
+print(f"Users that got the ground truth article: {got_count}/50000")
 
-# lengths = [len(arr) for arr in embeddings.values()]
-# length_distribution = Counter(lengths)
-# for length, count in sorted(length_distribution.items()):
-#     print(f"Length {length}: {count} keys")
+lengths = [len(arr) for arr in recommendations.values()]
+length_distribution = Counter(lengths)
+for length, count in sorted(length_distribution.items()):
+    print(f"Length {length}: {count}")

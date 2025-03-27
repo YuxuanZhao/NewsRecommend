@@ -3,20 +3,20 @@ import faiss
 
 prefix = 'news/'
 
-articles = np.load(prefix + 'articles.npy')
-article_ids = articles[:, 0].astype(np.int64) # (364047,)
-embeddings = articles[:, 1:].astype(np.float32) # (364047, 253)
+articles = np.load(prefix + 'article_table.npy')
+article_ids = articles[:, -1].astype(np.int64) # (364047,)
+embeddings = articles[:, :-1].astype(np.float32) # (364047, 256)
 embeddings_size = embeddings.shape[1]
 
-num_clusters = 450
+num_clusters = 300
 clustering = faiss.Clustering(embeddings_size, num_clusters)
 clustering.niter = 80
 clustering.verbose = True
 
-index = faiss.IndexHNSWFlat(embeddings_size, 32) # what happen?
+index = faiss.IndexHNSWFlat(embeddings_size, 32)
 embeddings = np.ascontiguousarray(embeddings)
 clustering.train(embeddings, index)
-centroids = faiss.vector_float_to_array(clustering.centroids).reshape(num_clusters, embeddings_size) # original shape?
+centroids = faiss.vector_float_to_array(clustering.centroids).reshape(num_clusters, embeddings_size)
 
 _, assignments = index.search(embeddings, 1)
 assignments = assignments.flatten()
