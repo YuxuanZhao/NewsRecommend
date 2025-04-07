@@ -11,7 +11,6 @@ import optuna
 prefix = 'news/'
 NUM_WORKERS = 20
 
-# article_embedding_dict
 article_emb = np.load(prefix + 'article_dict.npy', allow_pickle=True).item()
 article_ids = list(article_emb.keys())
 EMBED_DIM = len(article_emb[article_ids[0]])
@@ -236,7 +235,7 @@ def main():
     dropout_rate = 0.36
     batch_size = 64
     max_history = 64
-    epochs = 5
+    epochs = 10
 
     train_set = TrainDataset(max_history)
     train_loader = DataLoader(train_set, batch_size, shuffle=True, num_workers=NUM_WORKERS)
@@ -246,15 +245,19 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
     criterion = nn.BCEWithLogitsLoss()
+    best_ndcg = 0
 
     for epoch in range(epochs):
         train_loss = train(model, train_loader, optimizer, criterion, device)
         val_loss, ndcg = evaluate(model, eval_loader, criterion, device, 5)
         print(f'Epoch {epoch + 1}: Train {train_loss}, Validate {val_loss}, NDCG {ndcg}')
         scheduler.step(val_loss)
+        if ndcg > best_ndcg:
+            best_ndcg = ndcg
+            torch.save(model.state_dict(), prefix + 'DIN_model.pth')
 
 if __name__ == "__main__":
-    study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=20)
-    print("Best:", study.best_trial.params)
-    # main()
+    # study = optuna.create_study(direction='maximize')
+    # study.optimize(objective, n_trials=20)
+    # print("Best:", study.best_trial.params)
+    main()
